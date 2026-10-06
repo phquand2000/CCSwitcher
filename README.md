@@ -89,6 +89,15 @@ and adds machine-readable quota provenance per account:
 The current freshness limit is ten minutes. `lastUpdated` remains the file
 generation time for compatibility; it must not be used as quota freshness.
 
+#### Agent skill (no Paseo required)
+
+The repository includes a portable [`ccswitcher-quota`](skills/ccswitcher-quota/SKILL.md)
+skill for agents that do not use Paseo. Install it by copying the complete
+`skills/ccswitcher-quota` directory into the agent's skills directory. The
+bundled read-only helper validates schema v2, recomputes quota freshness at
+invocation time, and returns eligible, blocked, and recommended accounts as
+JSON. It never reads or modifies Claude credentials.
+
 CCSwitcher employs several specific architectural strategies, some uniquely tailored to its operation and others drawing inspiration from the open-source community (notably [CodexBar](https://github.com/steipete/CodexBar)).
 
 ### 1. Non-Interruptive Account Switching

@@ -1,0 +1,7 @@
+interface:
+  display_name: "CCSwitcher Quota"
+  short_description: "Inspect Claude quotas safely without Paseo"
+  default_prompt: "Use $ccswitcher-quota to inspect my Claude account quotas and recommend an automation-safe account."
+
+policy:
+  allow_implicit_invocation: true
