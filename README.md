@@ -69,6 +69,26 @@ CCSwitcher is a lightweight, pure menu bar macOS application designed to help de
 
 ## Key Features & Architecture
 
+### Agent-safe quota data
+
+CCSwitcher writes `widget-data.json` into its App Group container for local
+widgets and automation agents. Schema version 2 keeps the existing UI fields
+and adds machine-readable quota provenance per account:
+
+- `usageSampledAtISO8601` and `usageAgeSeconds` describe the actual successful
+  quota sample, not merely the time the JSON file was rewritten.
+- `sessionResetsAt` and `weeklyResetsAt` expose the upstream absolute ISO-8601
+  reset timestamps; agents should not parse the localized countdown strings.
+- `credentialOwnership` reports `verified`, `desynced`, `unknown`, or
+  `stored_backup` without exposing a token or credential fingerprint.
+- `quotaStatus` is one of `fresh`, `stale`, `rate_limited`, `token_expired`,
+  `error`, `unavailable`, `credential_desynced`, or `credential_unknown`.
+- `automationEligible` is the conservative decision flag. Agents must not
+  switch accounts or start a quota window when it is false.
+
+The current freshness limit is ten minutes. `lastUpdated` remains the file
+generation time for compatibility; it must not be used as quota freshness.
+
 CCSwitcher employs several specific architectural strategies, some uniquely tailored to its operation and others drawing inspiration from the open-source community (notably [CodexBar](https://github.com/steipete/CodexBar)).
 
 ### 1. Non-Interruptive Account Switching

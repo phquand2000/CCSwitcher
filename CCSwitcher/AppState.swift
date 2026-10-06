@@ -1118,10 +1118,60 @@ final class AppState: ObservableObject {
 
     // MARK: - Widget
 
+    private func iso8601String(_ date: Date?) -> String? {
+        guard let date else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
     private func updateWidgetData() {
+        let now = Date()
+        let liveOwner = liveCredentialOwner()
+        let automationFreshnessLimit: TimeInterval = 10 * 60
+
         let widgetAccounts = accounts.map { account in
             let usage = accountUsage[account.id]
             let error = accountUsageErrors[account.id]
+            let sampledAt = accountUsageSampledAt[account.id]
+            let sampleAge = sampledAt.map { max(0, Int(now.timeIntervalSince($0))) }
+            let retryNotBefore = usageRetryNotBefore[account.id]
+            let isParked = (retryNotBefore ?? .distantPast) > now
+
+            let credentialOwnership: String
+            if !account.isActive {
+                credentialOwnership = "stored_backup"
+            } else {
+                switch liveOwner {
+                case .owned(let ownerId) where ownerId == account.id:
+                    credentialOwnership = "verified"
+                case .desynced(_, let credentialId) where credentialId == account.id:
+                    credentialOwnership = "desynced"
+                default:
+                    credentialOwnership = "unknown"
+                }
+            }
+
+            let quotaStatus: String
+            if account.isActive && credentialOwnership == "desynced" {
+                quotaStatus = "credential_desynced"
+            } else if account.isActive && credentialOwnership != "verified" {
+                quotaStatus = "credential_unknown"
+            } else if error?.isExpired == true {
+                quotaStatus = "token_expired"
+            } else if isParked || error?.isRateLimited == true {
+                quotaStatus = "rate_limited"
+            } else if usage == nil || sampledAt == nil {
+                quotaStatus = "unavailable"
+            } else if error != nil {
+                quotaStatus = "error"
+            } else if Double(sampleAge ?? Int.max) > automationFreshnessLimit {
+                quotaStatus = "stale"
+            } else {
+                quotaStatus = "fresh"
+            }
+
+            let automationEligible = quotaStatus == "fresh"
             return WidgetAccountData(
                 email: account.displayEmail(obfuscated: !UserDefaults.standard.bool(forKey: "showFullEmail")),
                 displayName: account.effectiveDisplayName(obfuscated: !UserDefaults.standard.bool(forKey: "showFullEmail")),
@@ -1133,7 +1183,18 @@ final class AppState: ObservableObject {
                 weeklyResetTime: usage?.sevenDay?.resetTimeString,
                 extraUsageEnabled: usage?.extraUsage?.isEnabled,
                 hasError: error != nil,
-                errorMessage: error?.message
+                errorMessage: error?.message,
+                usageSampledAt: sampledAt,
+                usageSampledAtISO8601: iso8601String(sampledAt),
+                usageAgeSeconds: sampleAge,
+                sessionResetsAt: usage?.fiveHour?.resetsAt,
+                weeklyResetsAt: usage?.sevenDay?.resetsAt,
+                retryNotBefore: retryNotBefore,
+                retryNotBeforeISO8601: iso8601String(retryNotBefore),
+                credentialOwnership: credentialOwnership,
+                quotaStatus: quotaStatus,
+                automationEligible: automationEligible,
+                automationBlockReason: automationEligible ? nil : quotaStatus
             )
         }
 
@@ -1144,7 +1205,9 @@ final class AppState: ObservableObject {
             activeCodingTime: activityStats.activeCodingTimeString,
             linesWritten: activityStats.linesWritten,
             modelUsage: activityStats.modelUsage,
-            lastUpdated: Date()
+            lastUpdated: now,
+            schemaVersion: 2,
+            generatedAtISO8601: iso8601String(now)
         )
         data.save()
         WidgetCenter.shared.reloadAllTimelines()

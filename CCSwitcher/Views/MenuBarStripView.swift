@@ -59,7 +59,9 @@ struct MenuBarStripView: View {
             }
         )
         .onPreferenceChange(StripWidthKey.self) { width in
-            if width > 0 { onWidth(width) }
+            Task { @MainActor in
+                if width > 0 { onWidth(width) }
+            }
         }
         .onReceive(tickTimer) { date in
             tick = date

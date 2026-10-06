@@ -152,10 +152,14 @@ struct MainMenuView: View {
             popoverLog.info("[appear] tab=\(self.selectedTab.rawValue) chrome=\(self.chromeHeight) usage=\(self.usageContentHeight) popover=\(self.popoverHeight)")
         }
         .onPreferenceChange(UsageContentHeightKey.self) { value in
-            if value > 0 { usageContentHeight = value }
+            Task { @MainActor in
+                if value > 0 { usageContentHeight = value }
+            }
         }
         .onPreferenceChange(ChromeHeightKey.self) { value in
-            if value > 0 { chromeHeight = value }
+            Task { @MainActor in
+                if value > 0 { chromeHeight = value }
+            }
         }
         // Explicitly observe popoverHeight so SwiftUI tracks the computed
         // value as a dependency of the .frame modifier above. Without this,
