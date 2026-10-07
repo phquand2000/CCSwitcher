@@ -96,6 +96,10 @@ actor SessionParseCacheV2 {
     private var files: [String: CachedFileV2] = [:]
     private var pricingMeta: PricingMeta = .init(source: "unknown", fetchedAt: nil)
     private var loaded = false
+    private var hasUnsavedChanges = false
+    private var lastSavedAt = Date.distantPast
+    // The envelope is ~40 MB; rewriting it every refresh dirtied >2 GB per few hours.
+    private static let minSaveInterval: TimeInterval = 15 * 60
 
     private init() {
         self.claudeProjectsDir = NSHomeDirectory() + "/.claude/projects"
@@ -123,6 +127,7 @@ actor SessionParseCacheV2 {
         await PricingService.shared.reloadIfFreshChanged()
         // Capture the current pricing source for the envelope stamp.
         let src = await PricingService.shared.currentSource()
+        let previousPricingSource = pricingMeta.source
         pricingMeta = stampFor(source: src)
         // Trigger a TTL'd background refresh of the LiteLLM JSON. No-op if fresh.
         PricingService.shared.refreshInBackground()
@@ -150,7 +155,12 @@ actor SessionParseCacheV2 {
             + "pricing=\(pricingMeta.source)"
         )
 
-        save()
+        if !result.updates.isEmpty || evicted > 0 || pricingMeta.source != previousPricingSource {
+            hasUnsavedChanges = true
+        }
+        if hasUnsavedChanges && Date().timeIntervalSince(lastSavedAt) >= Self.minSaveInterval {
+            save()
+        }
     }
 
     /// Per-day, per-model cost summary. Applies global max-output-wins dedup
@@ -404,6 +414,8 @@ actor SessionParseCacheV2 {
         }
         do {
             try data.write(to: cacheURL, options: .atomic)
+            hasUnsavedChanges = false
+            lastSavedAt = Date()
             log.info("SAVE bytes=\(data.count) entries=\(files.count)")
         } catch {
             log.error("SAVE failed: \(error.localizedDescription)")

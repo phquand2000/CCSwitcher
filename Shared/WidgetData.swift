@@ -132,12 +132,29 @@ struct WidgetData: Codable {
         return try? JSONDecoder().decode(WidgetData.self, from: data)
     }
 
-    /// Save to the shared App Group container.
-    func save() {
-        guard let containerURL = Self.sharedContainerURL else { return }
-        let fileURL = containerURL.appendingPathComponent(Self.fileName)
-        if let data = try? JSONEncoder().encode(self) {
-            try? data.write(to: fileURL, options: .atomic)
+    // Separate queues: an App Group consent prompt can block open() indefinitely.
+    private static let groupWriteQueue = DispatchQueue(label: "me.xueshi.ccswitcher.widget-data.group", qos: .utility)
+    private static let mirrorWriteQueue = DispatchQueue(label: "me.xueshi.ccswitcher.widget-data.mirror", qos: .utility)
+
+    /// Unprotected copy for local automation that cannot read the App Group container.
+    static var mirrorURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory() + "/Library/Application Support")
+        return appSupport.appendingPathComponent("CCSwitcher", isDirectory: true).appendingPathComponent(fileName)
+    }
+
+    /// Save off the main thread to the App Group container and the mirror; `onGroupWritten` runs after the group write.
+    func save(onGroupWritten: (@Sendable () -> Void)? = nil) {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        let mirror = Self.mirrorURL
+        Self.mirrorWriteQueue.async {
+            try? FileManager.default.createDirectory(at: mirror.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: mirror, options: .atomic)
+        }
+        Self.groupWriteQueue.async {
+            guard let containerURL = Self.sharedContainerURL else { return }
+            try? data.write(to: containerURL.appendingPathComponent(Self.fileName), options: .atomic)
+            onGroupWritten?()
         }
     }
 }

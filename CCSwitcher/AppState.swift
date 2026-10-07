@@ -1209,9 +1209,10 @@ final class AppState: ObservableObject {
             schemaVersion: 2,
             generatedAtISO8601: iso8601String(now)
         )
-        data.save()
-        WidgetCenter.shared.reloadAllTimelines()
-        log.debug("[updateWidgetData] Widget data saved and timelines reloaded")
+        data.save {
+            DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
+        }
+        log.debug("[updateWidgetData] Widget data save queued")
     }
 
     // MARK: - Persistence
